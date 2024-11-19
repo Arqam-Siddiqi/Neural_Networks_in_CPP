@@ -3,6 +3,7 @@
 #include <omp.h>
 #include <fstream>
 #include <vector>
+#include <sstream>
 
 using namespace std;
 
@@ -96,7 +97,7 @@ class LinearRegression {
 class Reader {
 
     private:
-        int* countLines(string path){
+        static int* countLines(string path){
             ifstream file(path);
 
             if(!file.is_open()){
@@ -104,7 +105,15 @@ class Reader {
             }
 
             string line;
-            int rows = 0;
+            int rows = 1;
+            
+            getline(file, line);
+            int cols = 0;
+            for (char ch : line) {
+                if (ch == ',') {
+                    cols++;
+                }
+            }
 
             while(getline(file, line)){
                 rows++;
@@ -112,12 +121,7 @@ class Reader {
             
             file.close();
 
-            int cols = 0;
-            for (char ch : line) {
-                if (ch == ',') {
-                    ++cols;
-                }
-            }
+            
 
             int* size = new int[2];
             size[0] = rows;
@@ -127,7 +131,7 @@ class Reader {
         }
 
     public:
-        double** readCSV(string path){
+        static pair<int, double**> readCSV(string path){
 
 
                 int* size = countLines(path);
@@ -138,10 +142,9 @@ class Reader {
 
                 double** data = new double*[rows];
 
-                for(int i = 0; i<cols; i++){
+                for(int i = 0; i<rows; i++){
                     data[i] = new double[cols];
                 }
-                
 
                 ifstream file(path);
 
@@ -149,16 +152,42 @@ class Reader {
                     throw string("Unable to open file for reading.");
                 }
 
-                int sum = 0;
-                // #pragma omp parallel for num_threads(4)
-                for(int i = 0; i<rows; i++){
-                    sum = i*3;
+
+                string line;
+                getline(file, line);
+                int i = 0;
+                while(getline(file, line)){
+                    stringstream ss(line);
+
+                    string val;
+                    bool any_null_values = false;
+                    int j = 0;
+                    while(getline(ss, val, ',')){
+
+                        if(val == ""){
+                            any_null_values = true;
+                            break;
+                        }
+                        else{
+                            data[i][j] = stod(val);   
+                        }
+                        j++;
+                    }
+
+                    if(!any_null_values){
+                        // for(int k = 0; k<9; k++){
+                        //     cout << data[i][k] << ", ";
+                        // }
+                        // cout << endl;
+                        i++;
+                    }
+
                 }
 
-                cout << sum << endl;
 
                 file.close();
 
+                return {i, data};
             
         }
 
@@ -167,24 +196,25 @@ class Reader {
 int main(){
 
     double** data;
+    int size;
 
-    double start = omp_get_wtime();
+    double start, end;
 
     try{
-        Reader r1;
-        data = r1.readCSV("./housing.csv");
+        start = omp_get_wtime();
+        auto output = Reader::readCSV("./housing.csv");
+        end = omp_get_wtime();
+        cout << end - start << endl;
+
+        size = output.first;
+        data = output.second;
     }
     catch(string error){
         cout << error << endl;
         return -1;
     }
 
-    double end = omp_get_wtime();
-
-    cout << end - start << endl;
-
     return 0;
-    
 
     int length = sizeof(data)/sizeof(data[0]);
 
