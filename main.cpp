@@ -136,24 +136,18 @@ class LinearRegression {
 
             cost_history[0] = compute_cost(data);
 
-            // # pragma omp parallel for
+            # pragma omp parallel for
             for(int i = 0; i<epochs; i++){
                 auto gradients = compute_gradients(data);
                 
                 double* gradients_w = gradients.first;
                 double gradient_b = gradients.second;
 
-                for(int j=0; j<cols; j++){
-                    cout << gradients_w[j] << " ";
-                }
-                cout << endl << gradient_b << endl;
-
                 bias = bias - learning_rate * gradient_b;
 
                 delete gradients_w;
 
                 cost_history[i+1] = compute_cost(data);
-                cout << cost_history[i+1] << endl;
 
             }
 
@@ -232,31 +226,39 @@ int main(){
         return -1;
     }
 
-    LinearRegression model(rows, cols);
+    double sum = 0;
 
-    start = omp_get_wtime();
+    for(int i = 0; i<10; i++){
 
-    int epochs = 100;
-    double* cost_history = model.fit(data, 0.5, epochs);
-    
-    end = omp_get_wtime();
+        LinearRegression model(rows, cols);
 
-    printf("Cost History:\n");
-    for(int i=0; i<epochs+1; i++){
-        printf("Epoch %d: %f\n", i, cost_history[i]);
+        start = omp_get_wtime();
+
+        int epochs = 100;
+        double* cost_history = model.fit(data, 0.5, epochs);
+        
+        end = omp_get_wtime();
+
+        // printf("Cost History:\n");
+        // for(int i=0; i<epochs+1; i++){
+        //     printf("Epoch %d: %f\n", i, cost_history[i]);
+        // }
+
+        delete cost_history;
+
+        double prediction = model.predict(data[8]);
+
+        // printf("\nPrediction: %f\n", prediction);
+        
+        sum += end - start;
     }
 
-    delete cost_history;
-
-    double prediction = model.predict(data[8]);
-
-    printf("\nPrediction: %f\n", prediction);
-
-    printf("Time: %f\n", end - start);
+    cout << "Sum: " << sum << endl;
 
     for(int i = 0; i<cols; i++){
         delete data[i];
     }
     delete[] data;
+    
 
 }
