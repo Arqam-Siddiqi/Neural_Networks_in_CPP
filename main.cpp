@@ -136,7 +136,7 @@ class LinearRegression {
 
             cost_history[0] = compute_cost(data);
 
-            # pragma omp parallel for
+            // # pragma omp parallel for
             for(int i = 0; i<epochs; i++){
                 auto gradients = compute_gradients(data);
                 
@@ -247,8 +247,6 @@ int main(){
         delete cost_history;
 
         double prediction = model.predict(data[8]);
-
-        // printf("\nPrediction: %f\n", prediction);
         
         sum += end - start;
     }
