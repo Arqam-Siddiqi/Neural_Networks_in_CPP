@@ -7,6 +7,24 @@
 
 using namespace std;
 
+class Contents {
+
+    public:
+        int rows;
+        int cols;
+        int rows_in_file;
+
+        double** data;
+
+        Contents(int rows, int cols, int rows_in_file, double** data){
+            this->rows = rows;
+            this->cols = cols;
+            this->rows_in_file = rows_in_file;
+            this->data = data;
+        }
+        
+};
+
 class Reader {
 
     private:
@@ -42,13 +60,13 @@ class Reader {
         }
 
     public:
-        static pair<pair<int, int>, double**> readCSV(string path){
+        static Contents readCSV(string path){
 
             int* size = countLines(path);
             int rows = size[0];
             int cols = size[1];
 
-            delete size;
+            delete[] size;
 
             double** data = new double*[rows];
 
@@ -78,7 +96,7 @@ class Reader {
                         break;
                     }
                     else{
-                        data[i][j] = stod(val);   
+                        data[i][j] = stod(val);
                     }
                     j++;
                 }
@@ -91,7 +109,9 @@ class Reader {
 
             file.close();
 
-            return {{i, cols}, data};
+            Contents obj(i, cols, rows, data);
+
+            return obj;
         }
 
 };
@@ -143,9 +163,13 @@ class LinearRegression {
                 double* gradients_w = gradients.first;
                 double gradient_b = gradients.second;
 
+                for(int j = 0; j<cols; j++){
+                    weights[j] = weights[j] - learning_rate * gradients_w[j];
+                }
+
                 bias = bias - learning_rate * gradient_b;
 
-                delete gradients_w;
+                delete[] gradients_w;
 
                 cost_history[i+1] = compute_cost(data);
 
@@ -168,7 +192,7 @@ class LinearRegression {
                 double y = data[i][cols];
 
                 double difference = f(x) - y;
-
+                
                 for(int j=0; j<cols; j++){
                     gradients_w[j] += difference * x[j];
                 }
@@ -201,25 +225,111 @@ class LinearRegression {
             return f(x);
         }
 
-        ~LinearRegression(){
-            delete weights;
+        double getScore(double** data){
+            
+            // Task 1
+            double mean = 0;
+            for(int i = 0; i<rows; i++){
+                mean += data[i][cols];
+            }
+            mean /= rows;
+            
+            // Task 2 
+            double residual_sum_of_squares = compute_cost(data) * 2 * rows;
+
+            double total_sum_of_squares = 0;
+            for(int i = 0; i<rows; i++){
+                double diff = data[i][cols] - mean;
+                total_sum_of_squares += pow(diff, 2);
+            }
+
+            double r2 = 1 - residual_sum_of_squares / total_sum_of_squares;
+
+            return r2;
         }
+
+        ~LinearRegression(){
+            delete[] weights;
+        }
+};
+
+class StandardScaler {
+public:
+    // Method to standardize the data in-place
+    static void scale(double** data, int rows, int cols) {
+        // Step 1: Calculate the mean for each column
+        double* mean = new double[cols];
+        calculateMean(data, rows, cols, mean);
+
+        // Step 2: Calculate the standard deviation for each column
+        double* stdDev = new double[cols];
+        calculateStdDev(data, rows, cols, mean, stdDev);
+
+        // Step 3: Standardize the data in-place
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                data[i][j] = (data[i][j] - mean[j]) / stdDev[j];
+            }
+        }
+
+        // Step 4: Print the standardized data (optional)
+        // printStandardizedData(data, rows, cols);
+
+        // Step 5: Clean up dynamically allocated memory
+        delete[] mean;
+        delete[] stdDev;
+    }
+
+private:
+    // Calculate the mean of each column
+    static void calculateMean(double** data, int rows, int cols, double* mean) {
+        for (int j = 0; j < cols; ++j) {
+            mean[j] = 0.0;
+            for (int i = 0; i < rows; ++i) {
+                mean[j] += data[i][j];
+            }
+            mean[j] /= rows;
+        }
+    }
+
+    // Calculate the standard deviation of each column
+    static void calculateStdDev(double** data, int rows, int cols, double* mean, double* stdDev) {
+        for (int j = 0; j < cols; ++j) {
+            stdDev[j] = 0.0;
+            for (int i = 0; i < rows; ++i) {
+                stdDev[j] += std::pow(data[i][j] - mean[j], 2);
+            }
+            stdDev[j] = std::sqrt(stdDev[j] / rows);
+        }
+    }
+
+    // Print the standardized data (optional)
+    static void printStandardizedData(double** data, int rows, int cols) {
+        std::cout << "Standardized Data:" << std::endl;
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                std::cout << data[i][j] << " ";
+            }
+            std::cout << std::endl;
+        }
+    }
 };
 
 int main(){
 
     double** data;
-    int rows, cols;
+    int rows, cols, rows_in_file;
 
     double start, end;
 
     try{
         auto output = Reader::readCSV("./housing.csv");
         
-        rows = output.first.first;
-        cols = output.first.second;
+        rows = output.rows;
+        cols = output.cols;
+        rows_in_file = output.rows_in_file;
 
-        data = output.second;
+        data = output.data;
     }
     catch(string error){
         cout << error << endl;
@@ -228,35 +338,41 @@ int main(){
 
     double sum = 0;
 
-    for(int i = 0; i<10; i++){
+    StandardScaler::scale(data, rows, cols);
 
+    // for(int i = 0; i<10; i++){
         LinearRegression model(rows, cols);
 
         start = omp_get_wtime();
 
         int epochs = 100;
-        double* cost_history = model.fit(data, 0.5, epochs);
+        double alpha = 0.5;
+        double* cost_history = model.fit(data, alpha, epochs);
         
         end = omp_get_wtime();
 
         // printf("Cost History:\n");
         // for(int i=0; i<epochs+1; i++){
-        //     printf("Epoch %d: %f\n", i, cost_history[i]);
+            // printf("Epoch %d: %f\n", i, cost_history[i]);
         // }
 
-        delete cost_history;
+        delete[] cost_history;
 
-        double prediction = model.predict(data[8]);
+
+        double prediction = model.predict(data[10]);
         
         sum += end - start;
-    }
+    // }
+
+    
 
     cout << "Sum: " << sum << endl;
 
-    for(int i = 0; i<cols; i++){
-        delete data[i];
-    }
+    cout << "Prediction: " << prediction << endl;
+
+    double score = model.getScore(data);
+    cout << "R2: " << score << endl;
+
     delete[] data;
     
-
 }
