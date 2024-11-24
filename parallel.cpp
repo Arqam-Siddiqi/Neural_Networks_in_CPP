@@ -116,6 +116,50 @@ class Reader {
 
 };
 
+class StandardScaler {
+
+    public:
+        static void scale(double** data, int rows, int cols) {
+            double* mean = new double[cols];
+            calculateMean(data, rows, cols, mean);
+
+            double* stdDev = new double[cols];
+            calculateStdDev(data, rows, cols, mean, stdDev);
+
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
+                    data[i][j] = (data[i][j] - mean[j]) / stdDev[j];
+                }
+            }
+
+            delete[] mean;
+            delete[] stdDev;
+        }
+
+    private:
+        
+        static void calculateMean(double** data, int rows, int cols, double* mean) {
+            for (int j = 0; j < cols; ++j) {
+                mean[j] = 0.0;
+                for (int i = 0; i < rows; ++i) {
+                    mean[j] += data[i][j];
+                }
+                mean[j] /= rows;
+            }
+        }
+
+        static void calculateStdDev(double** data, int rows, int cols, double* mean, double* stdDev) {
+            for (int j = 0; j < cols; ++j) {
+                stdDev[j] = 0.0;
+                for (int i = 0; i < rows; ++i) {
+                    stdDev[j] += std::pow(data[i][j] - mean[j], 2);
+                }
+                stdDev[j] = std::sqrt(stdDev[j] / rows);
+            }
+        }
+
+};
+
 class LinearRegression {
 
     private:
@@ -156,24 +200,28 @@ class LinearRegression {
 
             cost_history[0] = compute_cost(data);
 
-            // # pragma omp parallel for
-            for(int i = 0; i<epochs; i++){
-                auto gradients = compute_gradients(data);
-                
-                double* gradients_w = gradients.first;
-                double gradient_b = gradients.second;
+            // # pragma omp parallel
+            // {
+                for(int i = 0; i<epochs; i++){
+                    
+                    auto gradients = compute_gradients(data);
+                    
+                    double* gradients_w = gradients.first;
+                    double gradient_b = gradients.second;
 
-                for(int j = 0; j<cols; j++){
-                    weights[j] = weights[j] - learning_rate * gradients_w[j];
+                    #pragma omp parallel for
+                    for(int j = 0; j<cols; j++){
+                        weights[j] = weights[j] - learning_rate * gradients_w[j];
+                    }
+
+                    bias = bias - learning_rate * gradient_b;
+
+                    delete[] gradients_w;
+
+                    cost_history[i+1] = compute_cost(data);
+
                 }
-
-                bias = bias - learning_rate * gradient_b;
-
-                delete[] gradients_w;
-
-                cost_history[i+1] = compute_cost(data);
-
-            }
+            // }
 
             return cost_history;
         }
@@ -181,25 +229,45 @@ class LinearRegression {
         pair<double*, double> compute_gradients(double** data){
 
             double* gradients_w = new double[cols];
+
+            # pragma omp parallel for
             for(int i = 0; i<cols; i++){
                 gradients_w[i] = 0;
             }
 
             double gradient_b = 0;
 
-            for(int i = 0; i<rows; i++){
-                double* x = data[i];
-                double y = data[i][cols];
+            # pragma omp parallel for reduction(+: gradients_w[:cols], gradient_b)
+            for(int col = 0; col<cols; col++){
 
-                double difference = f(x) - y;
-                
-                for(int j=0; j<cols; j++){
-                    gradients_w[j] += difference * x[j];
+                for(int row = 0; row<rows; row++){
+                    double* x = data[row];
+                    double y = data[row][cols];
+
+                    double difference = f(x) - y;
+
+                    gradients_w[col] += difference * x[col];
+
+                    if(col == 0)
+                        # pragma omp atomic
+                            gradient_b += difference;
                 }
-
-                gradient_b += difference;
             }
+            // for(int i = 0; i<rows; i++){
+            //     double* x = data[i];
+            //     double y = data[i][cols];
 
+            //     double difference = f(x) - y;
+                
+            //     // #pragma omp for
+            //     for(int j=0; j<cols; j++){
+            //         gradients_w[j] += difference * x[j];
+            //     }
+    
+            //     gradient_b += difference;
+            // }
+
+            # pragma omp parallel for
             for(int i = 0; i<cols; i++){
                 gradients_w[i] /= rows;
             }
@@ -213,9 +281,11 @@ class LinearRegression {
 
             double loss = 0;
 
+            # pragma omp parallel for reduction(+:loss)
             for(int i = 0; i<rows; i++){
                 loss += pow(f(data[i]) - data[i][cols], 2);
             }
+
             loss /= 2*rows;
 
             return loss;
@@ -253,67 +323,7 @@ class LinearRegression {
         }
 };
 
-class StandardScaler {
-public:
-    // Method to standardize the data in-place
-    static void scale(double** data, int rows, int cols) {
-        // Step 1: Calculate the mean for each column
-        double* mean = new double[cols];
-        calculateMean(data, rows, cols, mean);
 
-        // Step 2: Calculate the standard deviation for each column
-        double* stdDev = new double[cols];
-        calculateStdDev(data, rows, cols, mean, stdDev);
-
-        // Step 3: Standardize the data in-place
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                data[i][j] = (data[i][j] - mean[j]) / stdDev[j];
-            }
-        }
-
-        // Step 4: Print the standardized data (optional)
-        // printStandardizedData(data, rows, cols);
-
-        // Step 5: Clean up dynamically allocated memory
-        delete[] mean;
-        delete[] stdDev;
-    }
-
-private:
-    // Calculate the mean of each column
-    static void calculateMean(double** data, int rows, int cols, double* mean) {
-        for (int j = 0; j < cols; ++j) {
-            mean[j] = 0.0;
-            for (int i = 0; i < rows; ++i) {
-                mean[j] += data[i][j];
-            }
-            mean[j] /= rows;
-        }
-    }
-
-    // Calculate the standard deviation of each column
-    static void calculateStdDev(double** data, int rows, int cols, double* mean, double* stdDev) {
-        for (int j = 0; j < cols; ++j) {
-            stdDev[j] = 0.0;
-            for (int i = 0; i < rows; ++i) {
-                stdDev[j] += std::pow(data[i][j] - mean[j], 2);
-            }
-            stdDev[j] = std::sqrt(stdDev[j] / rows);
-        }
-    }
-
-    // Print the standardized data (optional)
-    static void printStandardizedData(double** data, int rows, int cols) {
-        std::cout << "Standardized Data:" << std::endl;
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                std::cout << data[i][j] << " ";
-            }
-            std::cout << std::endl;
-        }
-    }
-};
 
 int main(){
 
@@ -340,34 +350,32 @@ int main(){
 
     StandardScaler::scale(data, rows, cols);
 
-    // for(int i = 0; i<10; i++){
-        LinearRegression model(rows, cols);
+    LinearRegression model(rows, cols);
 
-        start = omp_get_wtime();
+    start = omp_get_wtime();
 
-        int epochs = 100;
-        double alpha = 0.5;
-        double* cost_history = model.fit(data, alpha, epochs);
-        
-        end = omp_get_wtime();
+    int epochs = 100;
+    double alpha = 0.5;
+    double* cost_history = model.fit(data, alpha, epochs);
+    
+    end = omp_get_wtime();
 
-        // printf("Cost History:\n");
-        // for(int i=0; i<epochs+1; i++){
-            // printf("Epoch %d: %f\n", i, cost_history[i]);
-        // }
-
-        delete[] cost_history;
-
-
-        double prediction = model.predict(data[10]);
-        
-        sum += end - start;
+    // printf("Cost History:\n");
+    // for(int i=0; i<epochs+1; i++){
+        // printf("Epoch %d: %f\n", i, cost_history[i]);
     // }
+
+    delete[] cost_history;
+    
+    sum += end - start;
+    
+        
 
     
 
     cout << "Sum: " << sum << endl;
 
+    double prediction = model.predict(data[10]);
     cout << "Prediction: " << prediction << endl;
 
     double score = model.getScore(data);
