@@ -200,7 +200,6 @@ class LinearRegression {
 
             cost_history[0] = compute_cost(data);
 
-            # pragma omp parallel 
             for(int i = 0; i<epochs; i++){
                 
                 auto gradients = compute_gradients(data);
@@ -327,6 +326,8 @@ int main(){
 
     StandardScaler::scale(data, rows, cols);
 
+    cout << data[0][0] << " " << data[0][1] << " " << data[1][0] << endl;
+    cout << rows << " " << cols << endl;
     LinearRegression model(rows, cols);
 
     start = omp_get_wtime();
