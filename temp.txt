@@ -1,6 +1,0 @@
-area: 0.0317
-housing: 0.1815
-
-sensor:
-parallel: 8.85
-serial: 11.8

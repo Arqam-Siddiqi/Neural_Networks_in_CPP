@@ -2,7 +2,6 @@
 #include <cmath>
 #include <omp.h>
 #include <fstream>
-#include <vector>
 #include <sstream>
 
 using namespace std;
@@ -127,10 +126,20 @@ class StandardScaler {
 
             double stdDev[cols];
             calculateStdDev(data, rows, cols, mean, stdDev);
+
+            // for(int i = 0; i<cols; i++){
+            //     cout << i << " " << stdDev[i] << " " << mean[i] << endl;
+            // }
             
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < cols; ++j) {
-                    data[i][j] = (data[i][j] - mean[j]) / stdDev[j];
+                    if(stdDev[j] != 0)
+                        data[i][j] = (data[i][j] - mean[j]) / stdDev[j];
+
+                    if (std::isnan(data[i][j])) {
+                        std::cerr << "NaN detected in scale function output" << std::endl;
+                        exit(0);
+                    }
                 }
             }
 
@@ -171,13 +180,12 @@ class StandardScaler {
 class Regression {
 
     public:
-        virtual void fit() = 0;
+        virtual double* fit(double** data, double learning_rate, int epochs) = 0;
         virtual double getScore(double** data) = 0;
         virtual double f(double x[]) = 0;
         virtual pair<double*, double> compute_gradients(double** data) = 0;
-        virtual double compute_cost(double** data);
+        virtual double compute_cost(double** data) = 0;
         virtual double predict(double x[]) = 0;
-
 
 };
 
@@ -222,6 +230,7 @@ class LinearRegression : public Regression{
 
             cost_history[0] = compute_cost(data);
 
+            // Uncomment the next line for a massive increase in performance in exchange for a very slight dip in score
             // # pragma omp parallel for
             for(int i = 0; i<epochs; i++){
                 
@@ -345,19 +354,163 @@ class LinearRegression : public Regression{
         }
 };
 
+class LogisticRegression : public Regression {
 
+    private:
+        double* weights;
+        double bias;
 
-class NeuralNetwork {
+        int rows;
+        int cols;
 
     public:
-        NeuralNetwork(){
 
+        LogisticRegression(int rows, int cols){
+            this->rows = rows;
+            this->cols = cols;
+            
+            weights = new double[cols];
+            for(int i=0; i<cols; i++){
+                weights[i] = 0;
+            }
+
+            bias = 0;
+        }
+
+        double f(double x[]) {
+            double result = 0;
+
+            #pragma omp simd reduction(+:result)
+            for (int i = 0; i < cols; i++) {
+                result += weights[i] * x[i];
+            }
+        
+            result += bias;
+            
+            result = 1 / (1 + exp(-result));
+
+            return result;
+        }
+
+        double* fit(double** data, double learning_rate, int epochs){
+
+            double* cost_history = new double[epochs+1];
+
+            cost_history[0] = compute_cost(data);
+
+            // Uncomment the next line for a massive increase in performance in exchange for a very slight dip in score
+            // # pragma omp parallel for
+            for(int i = 0; i<epochs; i++){
+                
+                auto gradients = compute_gradients(data);
+                
+                double* gradients_w = gradients.first;
+                double gradient_b = gradients.second;
+
+                # pragma omp simd
+                for(int j = 0; j<cols; j++){
+                    weights[j] = weights[j] - learning_rate * gradients_w[j];
+                }
+
+                bias = bias - learning_rate * gradient_b;
+
+                delete[] gradients_w;
+
+                cost_history[i+1] = compute_cost(data);
+            }
+
+            return cost_history;
+        }
+
+        pair<double*, double> compute_gradients(double** data){
+
+            double* gradients_w = new double[cols];
+
+            # pragma omp simd
+            for(int i = 0; i<cols; i++){
+                gradients_w[i] = 0;
+            }
+
+            double gradient_b = 0;
+
+            for(int i = 0; i<rows; i++){
+                double* x = data[i];
+                double y = data[i][cols];
+
+                double difference = f(x) - y;
+                
+                # pragma omp simd
+                for(int j=0; j<cols; j++){
+                    gradients_w[j] += difference * x[j];
+                }
+    
+                gradient_b += difference;
+            }
+
+            # pragma omp simd
+            for(int i = 0; i<cols; i++){
+                gradients_w[i] /= rows;
+            }
+            
+            gradient_b /= rows;
+
+            return {gradients_w, gradient_b};
+        }
+
+        double compute_cost(double** data){
+
+            double loss = 0;
+
+            # pragma omp parallel for reduction(+:loss)
+            for(int i = 0; i<rows; i++){
+                loss += pow(f(data[i]) - data[i][cols], 2);
+            }
+
+            loss /= 2*rows;
+
+            return loss;
+        }
+
+        double predict(double x[]){
+            return f(x);
+        }
+
+        double getScore(double** data){
+            
+            int correct_predictions = 0;
+
+            #pragma omp parallel for reduction(+:correct_predictions)
+            for (int i = 0; i < rows; i++) {
+                double* x = data[i];
+                double actual = data[i][cols];
+
+                double predicted_prob = f(x);
+                double predicted;
+                
+                if(predicted_prob >= 0.5){
+                    predicted = 1;
+                }
+                else{
+                    predicted = 0;
+                }
+
+                if (predicted == actual) {
+                    correct_predictions++;
+                }
+            }
+
+            return static_cast<double>(correct_predictions) / rows;
+
+        }
+
+        ~LogisticRegression(){
+            delete[] weights;
         }
 
 };
 
-int main(){
 
+int main(){
 
     double** data;
     int rows, cols, rows_in_file;
@@ -366,7 +519,8 @@ int main(){
     start = omp_get_wtime();
 
     try{
-        auto output = Reader::readCSV("./samples/sensor.csv");
+        // auto output = Reader::readCSV("./samples/sensor.csv");
+        auto output = Reader::readCSV("./samples/network_intrusion.csv");
         
         rows = output.rows;
         cols = output.cols;
@@ -382,7 +536,7 @@ int main(){
     StandardScaler scaler;
     scaler.scale(data, rows, cols);
 
-    LinearRegression model(rows, cols);
+    LogisticRegression model(rows, cols);
 
     int epochs = 100;
     double alpha = 0.05;
@@ -392,14 +546,12 @@ int main(){
     cout << "Improvement in Cost: " << cost_history[0] / cost_history[epochs] * 100 << "%" << endl;
 
     delete[] cost_history;
-    
-    
-    double prediction = model.predict(data[9]);
-    cout << "Prediction: " << prediction << endl;
+        
+    // double prediction = model.predict(data[9]);
+    // cout << "Prediction: " << prediction << endl;
 
     double score = model.getScore(data);
-    cout << "R2: " << score << endl;
-
+    cout << "Score: " << score << endl;
 
     end = omp_get_wtime();
     cout << "\nTime Taken: " << end - start << endl;
