@@ -136,10 +136,6 @@ class StandardScaler {
                     if(stdDev[j] != 0)
                         data[i][j] = (data[i][j] - mean[j]) / stdDev[j];
 
-                    if (std::isnan(data[i][j])) {
-                        std::cerr << "NaN detected in scale function output" << std::endl;
-                        exit(0);
-                    }
                 }
             }
 
