@@ -467,8 +467,8 @@ int main(){
     start = omp_get_wtime();
 
     try{
-        // auto output = Reader::readCSV("./samples/sensor.csv");
-        auto output = Reader::readCSV("./samples/network_intrusion.csv");
+        // auto output = Reader::readCSV("./samples/sensor.csv");   // Linear Regression Dataset
+        auto output = Reader::readCSV("./samples/network_intrusion.csv");   // Logistic Regression Dataset
 
         rows = output.rows;
         cols = output.cols;
@@ -483,6 +483,7 @@ int main(){
 
     StandardScaler::scale(data, rows, cols);
 
+    // LinearRegression model(rows, cols);
     LogisticRegression model(rows, cols);
 
     int epochs = 100;

@@ -126,10 +126,6 @@ class StandardScaler {
 
             double stdDev[cols];
             calculateStdDev(data, rows, cols, mean, stdDev);
-
-            // for(int i = 0; i<cols; i++){
-            //     cout << i << " " << stdDev[i] << " " << mean[i] << endl;
-            // }
             
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < cols; ++j) {
@@ -507,7 +503,6 @@ class LogisticRegression : public Regression {
 
 
 int main(){
-
     double** data;
     int rows, cols, rows_in_file;
     
@@ -515,8 +510,8 @@ int main(){
     start = omp_get_wtime();
 
     try{
-        // auto output = Reader::readCSV("./samples/sensor.csv");
-        auto output = Reader::readCSV("./samples/network_intrusion.csv");
+        // auto output = Reader::readCSV("./samples/sensor.csv");      // Linear Regression Dataset
+        auto output = Reader::readCSV("./samples/network_intrusion.csv");    // Logistic Regression Dataset
         
         rows = output.rows;
         cols = output.cols;
@@ -532,6 +527,7 @@ int main(){
     StandardScaler scaler;
     scaler.scale(data, rows, cols);
 
+    // LinearRegression model(rows, cols);
     LogisticRegression model(rows, cols);
 
     int epochs = 100;
